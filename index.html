@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=yes">
+    <meta name="format-detection" content="telephone=no, email=no">
+    <title>故障物料查询工具 - 多型号版</title>
+    <!-- 引入 XLSX 和 Supabase 库 -->
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <style>
+        /* ===== 所有样式保持不变，但整理为更清晰的区块 ===== */
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Helvetica Neue', Arial, sans-serif;
+            padding: 15px;
+            background-color: #f5f7fa;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding-bottom: 100px;
+        }
+        h1 {
+            color: #2c5282;
+            text-align: center;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e2e8f0;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        .model-selector {
+            width: 100%;
+            padding: 14px 20px;
+            font-size: 16px;
+            border: 2px solid #cbd5e0;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            background-color: white;
+            outline: none;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .model-selector:focus {
+            border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+        }
+        .tab-container {
+            display: flex;
+            margin-bottom: 15px;
+            border-radius: 10px;
+            overflow: hidden;
+            background-color: white;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        }
+        .tab-btn {
+            flex: 1;
+            padding: 14px;
+            text-align: center;
+            background-color: #f7fafc;
+            border: none;
+            font-size: 16px;
+            font-weight: 500;
+            color: #718096;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .tab-btn.active {
+            background-color: #4299e1;
+            color: white;
+        }
+        .tab-btn:not(.active):hover {
+            background-color: #e2e8f0;
+        }
+        .search-container input {
+            width: 100%;
+            padding: 16px 20px;
+            font-size: 18px;
+            border: 2px solid #cbd5e0;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            transition: all 0.3s;
+            outline: none;
+        }
+        .search-container input:focus {
+            border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2);
+        }
+        .fault-item {
+            background: white;
+            border-radius: 10px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+        }
+        .fault-title {
+            background: linear-gradient(135deg, #4299e1, #3182ce);
+            color: white;
+            padding: 15px 20px;
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .material-list {
+            padding: 15px;
+        }
+        .material-item {
+            padding: 12px 15px;
+            border-bottom: 1px dashed #e2e8f0;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .material-item:last-child { border-bottom: none; }
+        .seq {
+            background-color: #edf2f7;
+            color: #4a5568;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 12px;
+            flex-shrink: 0;
+        }
+        .material-name {
+            font-weight: 500;
+            flex-grow: 1;
+            margin-right: 10px;
+            word-break: break-word;
+        }
+        .material-code {
+            background-color: #fffacd;
+            color: #744210;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-family: monospace;
+            font-size: 14px;
+            margin-top: 5px;
+            width: 100%;
+            border: 1px solid #f6e05e;
+        }
+        .material-location {
+            background-color: #e6f7ff;
+            color: #006d75;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 13px;
+            margin-top: 5px;
+            width: 100%;
+            border: 1px solid #87e8de;
+        }
+        .no-result, .hint {
+            text-align: center;
+            padding: 30px;
+            color: #718096;
+            font-size: 16px;
+        }
+        .hint { font-size: 14px; color: #a0aec0; }
+        .highlight { background-color: #ffeb3b; padding: 0 2px; }
+        .model-indicator {
+            display: inline-block;
+            background-color: #4299e1;
+            color: white;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+        .material-search-item {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            border: 1px solid #e2e8f0;
+        }
+        .material-search-name {
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 8px;
+            color: #2d3748;
+        }
+        .appears-in {
+            font-size: 13px;
+            color: #718096;
+            margin-top: 8px;
+        }
+        .fault-code-tag {
+            background-color: #edf2f7;
+            color: #4a5568;
+            padding: 3px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-family: monospace;
+            display: inline-block;
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        /* 按钮样式 */
+        .feedback-btn, .admin-btn, .stats-btn, .view-reply-btn, .reply-admin-btn {
+            position: fixed;
+            border: none;
+            border-radius: 50px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .feedback-btn {
+            bottom: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #ed8936, #dd6b20);
+            padding: 14px 28px;
+            font-size: 16px;
+            color: white;
+        }
+        .view-reply-btn {
+            bottom: 20px;
+            left: 20px;
+            background: linear-gradient(135deg, #4299e1, #3182ce);
+            padding: 12px 24px;
+            font-size: 14px;
+            color: white;
+            display: none;
+        }
+        .admin-btn {
+            bottom: 80px;
+            right: 20px;
+            background: linear-gradient(135deg, #38a169, #2f855a);
+            padding: 12px 24px;
+            font-size: 14px;
+            display: none;
+        }
+        .stats-btn {
+            bottom: 140px;
+            right: 20px;
+            background: linear-gradient(135deg, #9f7aea, #805ad5);
+            padding: 12px 24px;
+            font-size: 14px;
+            display: none;
+        }
+        .reply-admin-btn {
+            bottom: 200px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea, #5a67d8);
+            padding: 12px 24px;
+            font-size: 14px;
+            display: none;
+        }
+        /* 反馈模态框 */
+        .feedback-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .feedback-modal.active { display: flex; }
+        .feedback-content {
+            background: white;
+            border-radius: 15px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        .feedback-header {
+            background: linear-gradient(135deg, #ed8936, #dd6b20);
+            color: white;
+            padding: 20px;
+            border-radius: 15px 15px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .feedback-header h2 { margin: 0; font-size: 20px; }
+        .close-modal {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        .feedback-body { padding: 25px; }
+        .feedback-form { display: flex; flex-direction: column; gap: 20px; }
+        .form-group { display: flex; flex-direction: column; gap: 8px; }
+        .form-group label { font-weight: 600; color: #4a5568; }
+        .form-group select, .form-group textarea {
+            padding: 14px;
+            border: 2px solid #cbd5e0;
+            border-radius: 10px;
+            font-size: 16px;
+            outline: none;
+        }
+        .form-group select:focus, .form-group textarea:focus {
+            border-color: #4299e1;
+            box-shadow: 0 0 0 3px rgba(66,153,225,0.2);
+        }
+        .form-group textarea { min-height: 100px; resize: vertical; }
+        .feedback-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        .feedback-actions button {
+            flex: 1;
+            padding: 14px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .submit-btn {
+            background: linear-gradient(135deg, #4299e1, #3182ce);
+            color: white;
+            border: none;
+        }
+        .cancel-btn {
+            background-color: #edf2f7;
+            color: #4a5568;
+            border: 2px solid #cbd5e0;
+        }
+        .success-message {
+            display: none;
+            text-align: center;
+            padding: 40px 25px;
+        }
+        .success-message.active { display: block; }
+        .success-icon { font-size: 60px; color: #48bb78; margin-bottom: 20px; }
+        .back-to-form {
+            background-color: #48bb78;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            padding: 12px 20px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .reply-notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #48bb78, #38a169);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(56,161,105,0.4);
+            z-index: 1000;
+            max-width: 400px;
+            display: none;
+        }
+        .reply-notification .close-reply {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        .reply-content {
+            background: rgba(255,255,255,0.2);
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        /* 加载动画 */
+        #loadingOverlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255,255,255,0.9);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+        .spinner {
+            border: 6px solid #e2e8f0;
+            border-top: 6px solid #4299e1;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .loading-text { color: #2d3748; font-size: 18px; font-weight: 500; }
+        /* 管理员面板样式 */
+        #adminDataPanel {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 95%;
+            max-width: 1400px;
+            height: 90%;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            z-index: 2000;
+            overflow-y: auto;
+            padding: 24px;
+            flex-direction: column;
+        }
+        .admin-action-btn {
+            background-color: #4299e1;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .admin-fault-card {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid #e2e8f0;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: auto;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        th { background: #edf2f7; color: #4a5568; }
+    </style>
+</head>
+<body>
+    <div id="loadingOverlay"><div class="spinner"></div><div class="loading-text">正在加载数据，请稍候...</div></div>
+
+    <h1>🔧 故障与物料查询 <span id="currentModel" class="model-indicator"></span></h1>
+    <select class="model-selector" id="modelSelector"></select>
+
+    <div class="tab-container">
+        <button class="tab-btn active" data-tab="fault">按故障查询</button>
+        <button class="tab-btn" data-tab="material">按备件查询</button>
+    </div>
+
+    <div class="tab-content active" id="faultTab">
+        <div class="search-container"><input type="text" id="searchBox" placeholder="请输入故障描述或代码" autocomplete="off"></div>
+        <div id="faultResult"><div class="hint">输入故障描述或代码，系统将进行模糊匹配。<br>例如输入"基站"或"清水箱"即可搜索相关故障。</div></div>
+    </div>
+
+    <div class="tab-content" id="materialTab">
+        <div class="search-container"><input type="text" id="materialSearchBox" placeholder="请输入备件名称" autocomplete="off"></div>
+        <div id="materialResult"><div class="hint">输入备件名称，系统将进行模糊匹配。<br>例如输入"气泵"或"电源线"即可搜索相关备件信息。</div></div>
+    </div>
+
+    <button class="feedback-btn" id="feedbackBtn">📝 问题反馈</button>
+    <button class="view-reply-btn" id="viewReplyBtn">📨 问题回复</button>
+    <button class="admin-btn" id="adminBtn">📊 导出Excel</button>
+    <button class="stats-btn" id="statsBtn">📈 导出统计</button>
+    <button class="reply-admin-btn" id="replyAdminBtn">💬 回复反馈</button>
+
+    <div class="reply-notification" id="replyNotification">
+        <button class="close-reply" id="closeReply">&times;</button>
+        <h3>📨 您有新的回复</h3>
+        <div class="reply-content" id="replyContent"></div>
+        <div class="reply-time" id="replyTime"></div>
+    </div>
+
+    <div class="feedback-modal" id="feedbackModal">
+        <div class="feedback-content">
+            <div id="feedbackForm">
+                <div class="feedback-header"><h2>问题反馈与建议</h2><button class="close-modal" id="closeModal">&times;</button></div>
+                <div class="feedback-body">
+                    <form class="feedback-form" id="feedbackFormElement">
+                        <div class="form-group">
+                            <label>问题1：反馈问题型号？</label>
+                            <select id="feedbackModel" required><option value="">请选择型号</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>问题2：具体问题？</label>
+                            <textarea id="feedbackProblem" placeholder="例如：3001没有故障物料；气阀没有料号..." required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>问题3：其他功能建议</label>
+                            <textarea id="feedbackSuggestion" placeholder="例如：希望增加XX型号的数据..."></textarea>
+                        </div>
+                        <div class="feedback-actions">
+                            <button type="button" class="cancel-btn" id="cancelFeedback">取消</button>
+                            <button type="submit" class="submit-btn">提交反馈</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="success-message" id="successMessage">
+                <div class="success-icon">✓</div>
+                <h3>反馈提交成功！</h3>
+                <p>感谢您的反馈，我们会尽快处理。</p>
+                <button class="back-to-form" id="backToForm">继续反馈</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="adminDataPanel">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2>📋 故障数据管理 - <span id="adminModelName"></span></h2>
+            <button onclick="closeAdminPanel()" style="background: none; border: none; font-size: 32px; cursor: pointer;">&times;</button>
+        </div>
+        <hr>
+        <div style="margin-bottom: 20px; display: flex; gap: 12px; flex-wrap: wrap;">
+            <button class="admin-action-btn" onclick="exportCurrentModelData()">📤 导出当前型号Excel</button>
+            <button class="admin-action-btn" onclick="importModelDataPrompt()">📥 导入Excel（替换全部）</button>
+            <button class="admin-action-btn" onclick="importModelDataIncrementalPrompt()">📥 增量导入Excel（仅添加新故障）</button>
+            <button class="admin-action-btn" onclick="addFaultPrompt()">➕ 新增故障</button>
+            <button class="admin-action-btn" onclick="refreshAdminPanel()">🔄 刷新数据</button>
+        </div>
+        <div id="faultAdminList"></div>
+    </div>
+
+    <div id="importExcelModal" style="display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2500; align-items:center; justify-content:center;">
+        <div style="background:white; padding:30px; border-radius:16px; max-width:500px; width:90%;">
+            <h3>📥 导入Excel</h3>
+            <p>请选择包含故障数据的Excel文件，格式需与导出的Excel一致。</p>
+            <input type="file" id="excelUploadFile" accept=".xlsx, .xls" style="margin:20px 0;">
+            <div style="display: flex; gap:12px; justify-content: flex-end;">
+                <button onclick="cancelImport()" style="padding:10px 20px; border:1px solid #cbd5e0; background:white; border-radius:8px;">取消</button>
+                <button onclick="confirmImport()" style="padding:10px 20px; background:#4299e1; color:white; border:none; border-radius:8px;">确认导入</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 配置 Supabase（从环境变量获取，但这里直接使用原值）
+        const SUPABASE_URL = 'https://rbuwdmkxqjadqxwzgqlx.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJidXdkbWt4cWphZHF4d3pncWx4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1NzY0MzcsImV4cCI6MjA4NjE1MjQzN30.d_s44YrgWImufccCBTwl4tFSfsWXOZhfA-NkYRtSBUc';
+
+        // 全局变量
+        let supabase = null;
+        let allModels = [];
+        let currentData = [];      // 当前型号的故障数据（含物料，用于前端展示）
+        let isLoading = false;
+        let currentModelCode = '';
+
+        // DOM 元素
+        const modelSelector = document.getElementById('modelSelector');
+        const searchBox = document.getElementById('searchBox');
+        const materialSearchBox = document.getElementById('materialSearchBox');
+        const faultResultDiv = document.getElementById('faultResult');
+        const materialResultDiv = document.getElementById('materialResult');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const currentModelSpan = document.getElementById('currentModel');
+
+        // ========== 辅助函数 ==========
+        function setLoading(loading) {
+            isLoading = loading;
+            loadingOverlay.style.display = loading ? 'flex' : 'none';
+            if (searchBox) searchBox.disabled = loading;
+            if (materialSearchBox) materialSearchBox.disabled = loading;
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            try { return new Date(dateStr).toLocaleString('zh-CN'); } catch(e) { return dateStr; }
+        }
+
+        // 高亮匹配
+        function highlightMatch(text, searchTerm) {
+            if (!searchTerm.trim() || !text) return text || '';
+            const regex = new RegExp(`(${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+            return text.replace(regex, '<span class="highlight">$1</span>');
+        }
+
+        // 获取或创建用户ID
+        function getUserId() {
+            try {
+                let id = localStorage.getItem('userUniqueId');
+                if (!id) {
+                    id = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    localStorage.setItem('userUniqueId', id);
+                }
+                return id;
+            } catch(e) {
+                return 'anonymous_' + Date.now();
+            }
+        }
+
+        // ========== Supabase 初始化 ==========
+        async function initSupabase() {
+            if (supabase) return supabase;
+            if (typeof window.supabase === 'undefined') {
+                console.error('Supabase 库未加载');
+                return null;
+            }
+            supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            return supabase;
+        }
+
+        // 加载所有型号
+        async function loadModels() {
+            const client = await initSupabase();
+            if (!client) return [];
+            const { data, error } = await client.from('models').select('*');
+            if (error) {
+                console.error('加载型号失败:', error);
+                return [];
+            }
+            allModels = data || [];
+            // 动态填充下拉框
+            modelSelector.innerHTML = '';
+            allModels.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.code;
+                option.textContent = model.name || model.code;
+                modelSelector.appendChild(option);
+            });
+            return allModels;
+        }
+
+        // 获取某型号故障数据（供前端展示，自动拼接使用率到物料名称）
+        async function fetchFaultsForDisplay(modelCode) {
+            const model = allModels.find(m => m.code === modelCode);
+            if (!model) return [];
+            const client = await initSupabase();
+            const { data: faults, error } = await client
+                .from('faults')
+                .select(`id, code, materials ( seq, name, code, location, usage_rate )`)
+                .eq('model_id', model.id)
+                .order('id', { ascending: true });
+            if (error) {
+                console.error('获取故障数据失败:', error);
+                return [];
+            }
+            return faults.map(f => ({
+                code: f.code,
+                materials: f.materials.map(m => ({
+                    seq: m.seq,
+                    name: (m.usage_rate && m.usage_rate !== '无数据') ? `${m.name}-使用率:${m.usage_rate}` : m.name,
+                    code: m.code,
+                    location: m.location
+                }))
+            }));
+        }
+
+        // 获取原始故障数据（供管理员面板）
+        async function fetchRawFaults(modelCode) {
+            const model = allModels.find(m => m.code === modelCode);
+            if (!model) return [];
+            const client = await initSupabase();
+            const { data, error } = await client
+                .from('faults')
+                .select(`id, code, materials ( id, seq, name, code, location, usage_rate )`)
+                .eq('model_id', model.id)
+                .order('id');
+            if (error) return [];
+            return data;
+        }
+
+        // 切换型号
+        async function switchModel(modelCode) {
+            setLoading(true);
+            currentModelCode = modelCode;
+            currentData = await fetchFaultsForDisplay(modelCode);
+            currentModelSpan.innerText = modelCode;
+            setLoading(false);
+            // 清空搜索框和结果
+            searchBox.value = '';
+            materialSearchBox.value = '';
+            faultResultDiv.innerHTML = '<div class="hint">输入故障描述或代码，系统将进行模糊匹配。<br>例如输入"基站"或"清水箱"即可搜索相关故障。</div>';
+            materialResultDiv.innerHTML = '<div class="hint">输入备件名称，系统将进行模糊匹配。<br>例如输入"气泵"或"电源线"即可搜索相关备件信息。</div>';
+        }
+
+        // ========== 搜索逻辑 ==========
+        function performFaultSearch(term) {
+            if (isLoading) {
+                faultResultDiv.innerHTML = '<div class="hint">数据加载中，请稍后搜索...</div>';
+                return;
+            }
+            if (!term.trim()) {
+                faultResultDiv.innerHTML = '<div class="hint">输入故障描述或代码，系统将进行模糊匹配。<br>例如输入"基站"或"清水箱"即可搜索相关故障。</div>';
+                return;
+            }
+            const upperTerm = term.toUpperCase();
+            let hasResult = false;
+            faultResultDiv.innerHTML = '';
+            currentData.forEach(fault => {
+                if (fault.code.toUpperCase().includes(upperTerm)) {
+                    hasResult = true;
+                    const faultDiv = document.createElement('div');
+                    faultDiv.className = 'fault-item';
+                    faultDiv.innerHTML = `<div class="fault-title">${highlightMatch(fault.code, term)}</div><div class="material-list"></div>`;
+                    const materialList = faultDiv.querySelector('.material-list');
+                    fault.materials.forEach(mat => {
+                        const item = document.createElement('div');
+                        item.className = 'material-item';
+                        item.innerHTML = `
+                            <div class="seq">${mat.seq || '1'}</div>
+                            <div class="material-name">${mat.name || ''}</div>
+                            <div class="material-code">${mat.code || ''}</div>
+                            <div class="material-location">${mat.location || ''}</div>
+                        `;
+                        materialList.appendChild(item);
+                    });
+                    faultResultDiv.appendChild(faultDiv);
+                }
+            });
+            if (!hasResult) {
+                faultResultDiv.innerHTML = `<div class="no-result">未找到包含 "<strong>${term}</strong>" 的故障信息。</div>`;
+            }
+        }
+
+        function performMaterialSearch(term) {
+            if (isLoading) {
+                materialResultDiv.innerHTML = '<div class="hint">数据加载中，请稍后搜索...</div>';
+                return;
+            }
+            if (!term.trim()) {
+                materialResultDiv.innerHTML = '<div class="hint">输入备件名称，系统将进行模糊匹配。<br>例如输入"气泵"或"电源线"即可搜索相关备件信息。</div>';
+                return;
+            }
+            const upperTerm = term.toUpperCase();
+            const materialMap = new Map();
+            currentData.forEach(fault => {
+                fault.materials.forEach(mat => {
+                    if (mat.name && mat.name.toUpperCase().includes(upperTerm)) {
+                        const key = mat.code || mat.name;
+                        if (!materialMap.has(key)) {
+                            materialMap.set(key, {
+                                name: mat.name,
+                                code: mat.code,
+                                location: mat.location,
+                                faults: [fault.code]
+                            });
+                        } else {
+                            const existing = materialMap.get(key);
+                            if (!existing.faults.includes(fault.code)) existing.faults.push(fault.code);
+                        }
+                    }
+                });
+            });
+            if (materialMap.size === 0) {
+                materialResultDiv.innerHTML = `<div class="no-result">未找到包含 "<strong>${term}</strong>" 的备件信息。</div>`;
+                return;
+            }
+            materialResultDiv.innerHTML = '';
+            Array.from(materialMap.values()).sort((a,b) => (a.name||'').localeCompare(b.name||'')).forEach(mat => {
+                const div = document.createElement('div');
+                div.className = 'material-search-item';
+                const faultTags = mat.faults.map(code => `<span class="fault-code-tag">${highlightMatch(code, term)}</span>`).join('');
+                div.innerHTML = `
+                    <div class="material-info">
+                        <div class="material-search-name">${highlightMatch(mat.name, term)}</div>
+                        <div class="material-code">${mat.code || ''}</div>
+                        <div class="material-location">${mat.location || ''}</div>
+                    </div>
+                    <div class="appears-in">
+                        <span class="appears-in-title">出现在以下故障中：</span>
+                        <div class="fault-code-list">${faultTags}</div>
+                    </div>
+                `;
+                materialResultDiv.appendChild(div);
+            });
+        }
+
+        // 防抖
+        function debounce(fn, delay) {
+            let timer;
+            return function(...args) {
+                clearTimeout(timer);
+                timer = setTimeout(() => fn.apply(this, args), delay);
+            };
+        }
+
+        // ========== 反馈系统 ==========
+        async function populateFeedbackModels() {
+            const feedbackSelect = document.getElementById('feedbackModel');
+            feedbackSelect.innerHTML = '<option value="">请选择型号</option>';
+            allModels.forEach(model => {
+                const opt = document.createElement('option');
+                opt.value = model.code;
+                opt.textContent = model.name || model.code;
+                feedbackSelect.appendChild(opt);
+            });
+        }
+
+        async function submitFeedback(model, problem, suggestion) {
+            const client = await initSupabase();
+            if (!client) throw new Error('数据库连接失败');
+            const userId = getUserId();
+            const { error } = await client.from('feedbacks').insert([{
+                user_id: userId,
+                model: model,
+                problem: problem.trim(),
+                suggestion: suggestion ? suggestion.trim() : '',
+                status: 'pending',
+                reply_read: false
+            }]);
+            if (error) throw error;
+        }
+
+        async function checkUnreadReplies() {
+            const client = await initSupabase();
+            if (!client) return;
+            const userId = getUserId();
+            const { data, error } = await client
+                .from('feedbacks')
+                .select('*')
+                .eq('user_id', userId)
+                .not('reply', 'is', null)
+                .order('created_at', { ascending: false });
+            if (error) return;
+            const unread = data.filter(f => f.reply_read === false);
+            if (unread.length > 0) {
+                // 显示第一条未读
+                showReplyNotification(unread[0]);
+            }
+            const replyBtn = document.getElementById('viewReplyBtn');
+            if (data && data.length > 0) {
+                replyBtn.style.display = 'block';
+                replyBtn.textContent = `📨 问题回复 (${data.length})`;
+                replyBtn.onclick = () => showAllRepliesModal(data);
+            } else {
+                replyBtn.style.display = 'none';
+            }
+        }
+
+        function showReplyNotification(feedback) {
+            const notif = document.getElementById('replyNotification');
+            const content = document.getElementById('replyContent');
+            const timeSpan = document.getElementById('replyTime');
+            content.textContent = feedback.reply;
+            timeSpan.textContent = `回复时间：${formatDate(feedback.reply_time)}`;
+            notif.dataset.feedbackId = feedback.id;
+            notif.style.display = 'block';
+            // 10秒后自动关闭并标记已读
+            setTimeout(async () => {
+                if (notif.style.display === 'block') {
+                    notif.style.display = 'none';
+                    await markReplyRead(feedback.id);
+                }
+            }, 10000);
+        }
+
+        async function markReplyRead(feedbackId) {
+            const client = await initSupabase();
+            if (!client) return;
+            await client.from('feedbacks').update({ reply_read: true }).eq('id', feedbackId);
+        }
+
+        function showAllRepliesModal(feedbacks) {
+            const modal = document.createElement('div');
+            modal.className = 'feedback-modal active';
+            modal.innerHTML = `
+                <div class="feedback-content" style="max-width:600px;">
+                    <div class="feedback-header"><h2>📨 我的回复</h2><button class="close-modal" id="closeAllRepliesModal">&times;</button></div>
+                    <div class="feedback-body" style="max-height:400px; overflow-y:auto;">
+                        ${feedbacks.map(f => `
+                            <div style="margin-bottom:20px; padding-bottom:15px; border-bottom:1px solid #e2e8f0;">
+                                <div style="display:flex; justify-content:space-between;">
+                                    <span style="background:#4299e1; color:white; padding:4px 12px; border-radius:20px;">${f.model}</span>
+                                    <span style="color:#718096;">${formatDate(f.created_at)}</span>
+                                </div>
+                                <div><strong>我的问题：</strong><div style="background:#f7fafc; padding:10px; margin-top:5px;">${f.problem}</div></div>
+                                <div><strong style="color:#48bb78;">管理员回复：</strong><div style="background:#c6f6d5; padding:10px; margin-top:5px; white-space:pre-wrap;">${f.reply}</div><div style="color:#718096; font-size:12px; text-align:right;">${formatDate(f.reply_time)}</div></div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            const closeBtn = modal.querySelector('#closeAllRepliesModal');
+            closeBtn.addEventListener('click', async () => {
+                modal.remove();
+                const unreadIds = feedbacks.filter(f => !f.reply_read).map(f => f.id);
+                if (unreadIds.length) {
+                    const client = await initSupabase();
+                    if (client) await client.from('feedbacks').update({ reply_read: true }).in('id', unreadIds);
+                }
+            });
+            modal.addEventListener('click', e => { if (e.target === modal) closeBtn.click(); });
+        }
+
+        async function recordVisit() {
+            const client = await initSupabase();
+            if (!client) return;
+            const userId = getUserId();
+            const today = new Date().toISOString().split('T')[0];
+            const { data: existing } = await client.from('site_stats').select('*').eq('date', today).maybeSingle();
+            if (existing) {
+                const clicks = (existing.clicks || 0) + 1;
+                let users = existing.users || [];
+                if (!users.includes(userId)) users.push(userId);
+                await client.from('site_stats').update({ clicks, users, updated_at: new Date().toISOString() }).eq('id', existing.id);
+            } else {
+                await client.from('site_stats').insert([{ date: today, clicks: 1, users: [userId], created_at: new Date().toISOString() }]);
+            }
+        }
+
+        // ========== 管理员认证 ==========
+        function isAdmin() {
+            return sessionStorage.getItem('adminAuthenticated') === 'true';
+        }
+
+        function showAdminAuth() {
+            const pwd = prompt('请输入管理员密码：');
+            if (pwd === '123456') {
+                sessionStorage.setItem('adminAuthenticated', 'true');
+                document.getElementById('adminBtn').style.display = 'block';
+                document.getElementById('statsBtn').style.display = 'block';
+                document.getElementById('replyAdminBtn').style.display = 'block';
+                // 添加数据管理按钮（如果不存在）
+                if (!document.getElementById('dataManageBtn')) {
+                    const btn = document.createElement('button');
+                    btn.id = 'dataManageBtn';
+                    btn.className = 'reply-admin-btn';
+                    btn.style.bottom = '260px';
+                    btn.style.background = 'linear-gradient(135deg, #805ad5, #6b46c1)';
+                    btn.innerText = '📁 数据管理';
+                    btn.onclick = () => showAdminDataPanel();
+                    document.body.appendChild(btn);
+                }
+                document.getElementById('dataManageBtn').style.display = 'block';
+                alert('管理员功能已激活！');
+            } else if (pwd) {
+                alert('密码错误！');
+            }
+        }
+
+        // 管理员面板
+        async function showAdminDataPanel() {
+            if (!isAdmin()) {
+                alert('请先进行管理员认证！');
+                showAdminAuth();
+                return;
+            }
+            document.getElementById('adminDataPanel').style.display = 'flex';
+            await refreshAdminPanel();
+        }
+
+        function closeAdminPanel() {
+            document.getElementById('adminDataPanel').style.display = 'none';
+        }
+
+        async function refreshAdminPanel() {
+            const modelCode = modelSelector.value;
+            document.getElementById('adminModelName').innerText = modelCode;
+            const faults = await fetchRawFaults(modelCode);
+            const container = document.getElementById('faultAdminList');
+            if (!faults.length) {
+                container.innerHTML = '<div style="text-align:center; padding:40px;">暂无故障数据，请点击“新增故障”添加。</div>';
+                return;
+            }
+            container.innerHTML = faults.map(fault => `
+                <div class="admin-fault-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                        <strong style="font-size:18px;">${fault.code}</strong>
+                        <div>
+                            <button onclick="editFault('${fault.id}', '${escapeHtml(fault.code)}')" class="admin-action-btn" style="background:#4299e1;">✏️ 编辑</button>
+                            <button onclick="deleteFault('${fault.id}')" class="admin-action-btn" style="background:#f56565;">🗑️ 删除</button>
+                        </div>
+                    </div>
+                    <div style="overflow-x:auto;">
+                        <table>
+                            <thead><tr><th>序号</th><th>备件名称</th><th>料号</th><th>位置</th><th>使用率</th><th>操作</th></tr></thead>
+                            <tbody>
+                                ${fault.materials.map(mat => `
+                                    <tr>
+                                        <td>${mat.seq}</td>
+                                        <td>${escapeHtml(mat.name)}</td>
+                                        <td>${escapeHtml(mat.code)}</td>
+                                        <td>${escapeHtml(mat.location)}</td>
+                                        <td>${escapeHtml(mat.usage_rate || '无数据')}</td>
+                                        <td>
+                                            <button onclick="editMaterial('${mat.id}', ${mat.seq}, '${escapeHtml(mat.name)}', '${escapeHtml(mat.code)}', '${escapeHtml(mat.location)}', '${escapeHtml(mat.usage_rate || '无数据')}')" class="admin-action-btn" style="background:#38a169;">编辑</button>
+                                            <button onclick="deleteMaterial('${mat.id}')" class="admin-action-btn" style="background:#f56565;">删除</button>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="margin-top:16px;">
+                        <button onclick="addMaterialPrompt('${fault.id}')" class="admin-action-btn" style="background:#48bb78;">+ 添加备件</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 辅助转义
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
+                return c;
+            });
+        }
+
+        // 调用 Netlify Function
+        async function callManageFunction(action, data) {
+            const adminPwd = sessionStorage.getItem('adminPassword') || '123456';
+            const res = await fetch('/.netlify/functions/manage-faults', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Admin-Password': adminPwd
+                },
+                body: JSON.stringify({ action, data })
+            });
+            const result = await res.json();
+            if (!result.success) throw new Error(result.error || '操作失败');
+            return result.data;
+        }
+
+        // 导出当前型号 Excel
+        async function exportCurrentModelData() {
+            const modelCode = modelSelector.value;
+            const faults = await fetchRawFaults(modelCode);
+            const rows = [['故障代码', '序号', '备件名称', '料号', '位置', '使用率']];
+            faults.forEach(f => {
+                if (f.materials.length === 0) rows.push([f.code, '', '', '', '', '']);
+                else {
+                    f.materials.forEach(m => {
+                        rows.push([f.code, m.seq, m.name, m.code, m.location, m.usage_rate || '无数据']);
+                    });
+                }
+            });
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '故障备件');
+            XLSX.writeFile(wb, `${modelCode}_故障备件_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        function importModelDataPrompt() {
+            document.getElementById('importExcelModal').style.display = 'flex';
+            window.currentImportMode = 'replace';
+        }
+        function importModelDataIncrementalPrompt() {
+            document.getElementById('importExcelModal').style.display = 'flex';
+            window.currentImportMode = 'incremental';
+        }
+        function cancelImport() {
+            document.getElementById('importExcelModal').style.display = 'none';
+            document.getElementById('excelUploadFile').value = '';
+        }
+        async function confirmImport() {
+            const fileInput = document.getElementById('excelUploadFile');
+            if (!fileInput.files[0]) { alert('请选择Excel文件'); return; }
+            const mode = window.currentImportMode || 'replace';
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    setLoading(true);
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const json = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+                    const rows = json.slice(1);
+                    const faultsMap = new Map();
+                    rows.forEach(row => {
+                        const [code, seq, name, pn, loc, usage] = row;
+                        if (!code) return;
+                        if (!faultsMap.has(code)) faultsMap.set(code, { code, materials: [] });
+                        if (name && pn) {
+                            faultsMap.get(code).materials.push({
+                                seq: parseInt(seq) || 1,
+                                name,
+                                code: pn,
+                                location: loc || '',
+                                usage_rate: usage || '无数据'
+                            });
+                        }
+                    });
+                    const allFaults = Array.from(faultsMap.values());
+                    const action = mode === 'replace' ? 'importModelData' : 'importModelDataIncremental';
+                    await callManageFunction(action, {
+                        modelCode: modelSelector.value,
+                        faults: allFaults
+                    });
+                    setLoading(false);
+                    alert(`${mode === 'replace' ? '替换' : '增量'}导入成功！共 ${allFaults.length} 条故障记录。`);
+                    cancelImport();
+                    await refreshAdminPanel();
+                    currentData = await fetchFaultsForDisplay(modelSelector.value);
+                } catch (err) {
+                    setLoading(false);
+                    alert('导入失败：' + err.message);
+                }
+            };
+            reader.readAsArrayBuffer(fileInput.files[0]);
+        }
+
+        // 故障操作
+        function addFaultPrompt() {
+            const code = prompt('请输入故障代码/描述');
+            if (!code) return;
+            callManageFunction('addFault', { modelCode: modelSelector.value, code, materials: [] })
+                .then(() => {
+                    alert('添加成功');
+                    refreshAdminPanel();
+                    fetchFaultsForDisplay(modelSelector.value).then(d => currentData = d);
+                }).catch(err => alert('添加失败：' + err.message));
+        }
+        function editFault(id, currentCode) {
+            const newCode = prompt('修改故障代码', currentCode);
+            if (!newCode || newCode === currentCode) return;
+            callManageFunction('updateFault', { faultId: id, code: newCode })
+                .then(() => {
+                    alert('修改成功');
+                    refreshAdminPanel();
+                    fetchFaultsForDisplay(modelSelector.value).then(d => currentData = d);
+                }).catch(err => alert('修改失败：' + err.message));
+        }
+        function deleteFault(id) {
+            if (!confirm('确定删除该故障及其所有备件？')) return;
+            callManageFunction('deleteFault', { faultId: id })
+                .then(() => {
+                    alert('删除成功');
+                    refreshAdminPanel();
+                    fetchFaultsForDisplay(modelSelector.value).then(d => currentData = d);
+                }).catch(err => alert('删除失败：' + err.message));
+        }
+        // 备件操作
+        function addMaterialPrompt(faultId) {
+            const seq = prompt('序号', '1');
+            if (!seq) return;
+            const name = prompt('备件名称');
+            if (!name) return;
+            const code = prompt('料号');
+            if (!code) return;
+            const location = prompt('位置', '机器人');
+            if (!location) return;
+            const usage = prompt('使用率', '无数据');
+            callManageFunction('addMaterial', {
+                faultId,
+                seq: parseInt(seq),
+                name,
+                code,
+                location,
+                usage_rate: usage || '无数据'
+            }).then(() => {
+                alert('添加成功');
+                refreshAdminPanel();
+                fetchFaultsForDisplay(modelSelector.value).then(d => currentData = d);
+            }).catch(err => alert('添加失败：' + err.message));
+        }
+        function editMaterial(id, seq, name, code, loc, usage) {
+            const newSeq = prompt('序号', seq);
+            if (!newSeq) return;
+            const newName = prompt('备件名称', name);
+            if (!newName) return;
+            const newCode = prompt('料号', code);
+            if (!newCode) return;
+            const newLoc = prompt('位置', loc);
+            if (!newLoc) return;
+            const newUsage = prompt('使用率', usage);
+            callManageFunction('updateMaterial', {
+                materialId: id,
+                seq: parseInt(newSeq),
+                name: newName,
+                code: newCode,
+                location: newLoc,
+                usage_rate: newUsage || '无数据'
+            }).then(() => {
+                alert('更新成功');
+                refreshAdminPanel();
+                fetchFaultsForDisplay(modelSelector.value).then(d => currentData = d);
+            }).catch(err => alert('更新失败：' + err.message));
+        }
+        function deleteMaterial(id) {
+            if (!confirm('确定删除该备件？')) return;
+            callManageFunction('deleteMaterial', { materialId: id })
+                .then(() => {
+                    alert('删除成功');
+                    refreshAdminPanel();
+                    fetchFaultsForDisplay(modelSelector.value).then(d => currentData = d);
+                }).catch(err => alert('删除失败：' + err.message));
+        }
+
+        // 导出反馈统计
+        async function exportFeedbackAsAdmin() {
+            const adminPwd = sessionStorage.getItem('adminPassword') || '123456';
+            try {
+                const res = await fetch('/.netlify/functions/export-feedback', {
+                    headers: { 'X-Admin-Password': adminPwd }
+                });
+                const result = await res.json();
+                if (!result.success) throw new Error(result.error);
+                generateExcelFromFeedback(result.data);
+            } catch(e) {
+                alert('导出失败：' + e.message);
+            }
+        }
+        function generateExcelFromFeedback(data) {
+            if (!data.length) { alert('暂无反馈数据'); return; }
+            const rows = [['序号', 'ID', '用户ID', '型号', '问题', '建议', '状态', '回复内容', '回复时间', '提交时间']];
+            data.forEach((f, i) => {
+                rows.push([
+                    i+1, f.id, f.user_id, f.model, f.problem, f.suggestion,
+                    f.status === 'pending' ? '待处理' : (f.status === 'reviewed' ? '已查看' : '已解决'),
+                    f.reply || '', formatDate(f.reply_time), formatDate(f.created_at)
+                ]);
+            });
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '反馈数据');
+            XLSX.writeFile(wb, `反馈数据_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        // 回复反馈
+        async function replyFeedback() {
+            if (!isAdmin()) { showAdminAuth(); return; }
+            const id = prompt('请输入要回复的反馈ID：');
+            if (!id) return;
+            const reply = prompt('请输入回复内容：');
+            if (!reply) return;
+            const adminPwd = sessionStorage.getItem('adminPassword') || '123456';
+            try {
+                const res = await fetch('/.netlify/functions/reply-feedback', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Admin-Password': adminPwd
+                    },
+                    body: JSON.stringify({ feedbackId: id, reply })
+                });
+                const result = await res.json();
+                if (!result.success) throw new Error(result.error);
+                alert('回复成功！');
+            } catch(e) {
+                alert('回复失败：' + e.message);
+            }
+        }
+
+        // 导出统计
+        async function exportStats() {
+            const client = await initSupabase();
+            if (!client) { alert('无法连接数据库'); return; }
+            const { data, error } = await client.from('site_stats').select('*').order('date', { ascending: false });
+            if (error || !data.length) { alert('暂无统计数据'); return; }
+            const rows = [['日期', '点击次数', '独立用户数']];
+            let totalClicks = 0, totalUsers = new Set();
+            data.forEach(s => {
+                const usersCount = Array.isArray(s.users) ? s.users.length : 0;
+                rows.push([s.date, s.clicks, usersCount]);
+                totalClicks += s.clicks || 0;
+                if (Array.isArray(s.users)) s.users.forEach(u => totalUsers.add(u));
+            });
+            rows.push([], ['总计', totalClicks, totalUsers.size], ['导出时间', new Date().toLocaleString('zh-CN'), '']);
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '网站统计');
+            XLSX.writeFile(wb, `网站统计_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+
+        // ========== 事件绑定 ==========
+        function bindEvents() {
+            modelSelector.addEventListener('change', () => switchModel(modelSelector.value));
+            searchBox.addEventListener('input', debounce(e => performFaultSearch(e.target.value), 300));
+            materialSearchBox.addEventListener('input', debounce(e => performMaterialSearch(e.target.value), 300));
+            // Tab切换
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tab = btn.dataset.tab;
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                    document.getElementById(tab + 'Tab').classList.add('active');
+                    if (tab === 'fault') {
+                        materialResultDiv.innerHTML = '<div class="hint">输入备件名称，系统将进行模糊匹配。<br>例如输入"气泵"或"电源线"即可搜索相关备件信息。</div>';
+                        materialSearchBox.value = '';
+                    } else {
+                        faultResultDiv.innerHTML = '<div class="hint">输入故障描述或代码，系统将进行模糊匹配。<br>例如输入"基站"或"清水箱"即可搜索相关故障。</div>';
+                        searchBox.value = '';
+                    }
+                });
+            });
+            // 反馈相关
+            document.getElementById('feedbackBtn').addEventListener('click', () => {
+                document.getElementById('feedbackModel').value = modelSelector.value;
+                document.getElementById('feedbackModal').classList.add('active');
+            });
+            const closeModal = () => {
+                document.getElementById('feedbackModal').classList.remove('active');
+                document.getElementById('feedbackFormElement').reset();
+                document.getElementById('feedbackForm').style.display = 'block';
+                document.getElementById('successMessage').classList.remove('active');
+            };
+            document.getElementById('closeModal').addEventListener('click', closeModal);
+            document.getElementById('cancelFeedback').addEventListener('click', closeModal);
+            document.getElementById('feedbackModal').addEventListener('click', e => { if (e.target === document.getElementById('feedbackModal')) closeModal(); });
+            document.getElementById('feedbackFormElement').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const model = document.getElementById('feedbackModel').value;
+                const problem = document.getElementById('feedbackProblem').value;
+                const suggestion = document.getElementById('feedbackSuggestion').value;
+                if (!model || !problem.trim()) { alert('请填写型号和具体问题'); return; }
+                try {
+                    await submitFeedback(model, problem, suggestion);
+                    document.getElementById('feedbackForm').style.display = 'none';
+                    document.getElementById('successMessage').classList.add('active');
+                    recordVisit();
+                } catch(err) {
+                    alert('提交失败：' + err.message);
+                }
+            });
+            document.getElementById('backToForm').addEventListener('click', () => {
+                document.getElementById('feedbackFormElement').reset();
+                document.getElementById('feedbackForm').style.display = 'block';
+                document.getElementById('successMessage').classList.remove('active');
+            });
+            document.getElementById('closeReply').addEventListener('click', async () => {
+                const notif = document.getElementById('replyNotification');
+                const fid = notif.dataset.feedbackId;
+                if (fid) await markReplyRead(fid);
+                notif.style.display = 'none';
+            });
+            // 管理员按钮
+            document.getElementById('adminBtn').addEventListener('click', () => {
+                if (!isAdmin()) showAdminAuth();
+                else exportFeedbackAsAdmin();
+            });
+            document.getElementById('statsBtn').addEventListener('click', exportStats);
+            document.getElementById('replyAdminBtn').addEventListener('click', () => {
+                if (!isAdmin()) showAdminAuth();
+                else replyFeedback();
+            });
+        }
+
+        // ========== 初始化 ==========
+        window.onload = async () => {
+            setLoading(true);
+            await loadModels();
+            if (allModels.length) {
+                const defaultModel = allModels[0].code;
+                modelSelector.value = defaultModel;
+                await switchModel(defaultModel);
+            } else {
+                setLoading(false);
+                alert('未能加载型号数据，请检查网络或数据库');
+            }
+            await populateFeedbackModels();
+            await checkUnreadReplies();
+            await recordVisit();
+            bindEvents();
+            // 如果之前已认证，显示管理员按钮
+            if (isAdmin()) {
+                document.getElementById('adminBtn').style.display = 'block';
+                document.getElementById('statsBtn').style.display = 'block';
+                document.getElementById('replyAdminBtn').style.display = 'block';
+                if (!document.getElementById('dataManageBtn')) {
+                    const btn = document.createElement('button');
+                    btn.id = 'dataManageBtn';
+                    btn.className = 'reply-admin-btn';
+                    btn.style.bottom = '260px';
+                    btn.style.background = 'linear-gradient(135deg, #805ad5, #6b46c1)';
+                    btn.innerText = '📁 数据管理';
+                    btn.onclick = () => showAdminDataPanel();
+                    document.body.appendChild(btn);
+                }
+                document.getElementById('dataManageBtn').style.display = 'block';
+            }
+            setLoading(false);
+        };
+    </script>
+</body>
+</html>
