@@ -5,11 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=yes">
     <meta name="format-detection" content="telephone=no, email=no">
     <title>故障物料查询工具 - 多型号版</title>
-    <!-- 引入 XLSX 和 Supabase 库 -->
     <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <style>
-        /* ===== 所有样式保持不变，但整理为更清晰的区块 ===== */
         * { box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Helvetica Neue', Arial, sans-serif;
@@ -552,14 +550,14 @@
     </div>
 
     <script>
-        // 配置 Supabase（从环境变量获取，但这里直接使用原值）
+        // ========== 配置 ==========
         const SUPABASE_URL = 'https://rbuwdmkxqjadqxwzgqlx.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJidXdkbWt4cWphZHF4d3pncWx4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA1NzY0MzcsImV4cCI6MjA4NjE1MjQzN30.d_s44YrgWImufccCBTwl4tFSfsWXOZhfA-NkYRtSBUc';
 
-        // 全局变量
+        // 全局变量（只声明一次）
         let supabase = null;
         let allModels = [];
-        let currentData = [];      // 当前型号的故障数据（含物料，用于前端展示）
+        let currentData = [];
         let isLoading = false;
         let currentModelCode = '';
 
@@ -585,14 +583,12 @@
             try { return new Date(dateStr).toLocaleString('zh-CN'); } catch(e) { return dateStr; }
         }
 
-        // 高亮匹配
         function highlightMatch(text, searchTerm) {
             if (!searchTerm.trim() || !text) return text || '';
             const regex = new RegExp(`(${searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
             return text.replace(regex, '<span class="highlight">$1</span>');
         }
 
-        // 获取或创建用户ID
         function getUserId() {
             try {
                 let id = localStorage.getItem('userUniqueId');
@@ -604,6 +600,16 @@
             } catch(e) {
                 return 'anonymous_' + Date.now();
             }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/[&<>]/g, function(m) {
+                if (m === '&') return '&amp;';
+                if (m === '<') return '&lt;';
+                if (m === '>') return '&gt;';
+                return m;
+            });
         }
 
         // ========== Supabase 初始化 ==========
@@ -627,7 +633,6 @@
                 return [];
             }
             allModels = data || [];
-            // 动态填充下拉框
             modelSelector.innerHTML = '';
             allModels.forEach(model => {
                 const option = document.createElement('option');
@@ -684,7 +689,6 @@
             currentData = await fetchFaultsForDisplay(modelCode);
             currentModelSpan.innerText = modelCode;
             setLoading(false);
-            // 清空搜索框和结果
             searchBox.value = '';
             materialSearchBox.value = '';
             faultResultDiv.innerHTML = '<div class="hint">输入故障描述或代码，系统将进行模糊匹配。<br>例如输入"基站"或"清水箱"即可搜索相关故障。</div>';
@@ -783,7 +787,6 @@
             });
         }
 
-        // 防抖
         function debounce(fn, delay) {
             let timer;
             return function(...args) {
@@ -832,7 +835,6 @@
             if (error) return;
             const unread = data.filter(f => f.reply_read === false);
             if (unread.length > 0) {
-                // 显示第一条未读
                 showReplyNotification(unread[0]);
             }
             const replyBtn = document.getElementById('viewReplyBtn');
@@ -853,7 +855,6 @@
             timeSpan.textContent = `回复时间：${formatDate(feedback.reply_time)}`;
             notif.dataset.feedbackId = feedback.id;
             notif.style.display = 'block';
-            // 10秒后自动关闭并标记已读
             setTimeout(async () => {
                 if (notif.style.display === 'block') {
                     notif.style.display = 'none';
@@ -929,7 +930,6 @@
                 document.getElementById('adminBtn').style.display = 'block';
                 document.getElementById('statsBtn').style.display = 'block';
                 document.getElementById('replyAdminBtn').style.display = 'block';
-                // 添加数据管理按钮（如果不存在）
                 if (!document.getElementById('dataManageBtn')) {
                     const btn = document.createElement('button');
                     btn.id = 'dataManageBtn';
@@ -947,7 +947,6 @@
             }
         }
 
-        // 管理员面板
         async function showAdminDataPanel() {
             if (!isAdmin()) {
                 alert('请先进行管理员认证！');
@@ -974,7 +973,7 @@
             container.innerHTML = faults.map(fault => `
                 <div class="admin-fault-card">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                        <strong style="font-size:18px;">${fault.code}</strong>
+                        <strong style="font-size:18px;">${escapeHtml(fault.code)}</strong>
                         <div>
                             <button onclick="editFault('${fault.id}', '${escapeHtml(fault.code)}')" class="admin-action-btn" style="background:#4299e1;">✏️ 编辑</button>
                             <button onclick="deleteFault('${fault.id}')" class="admin-action-btn" style="background:#f56565;">🗑️ 删除</button>
@@ -1005,19 +1004,6 @@
                     </div>
                 </div>
             `).join('');
-        }
-
-        // 辅助转义
-        function escapeHtml(str) {
-            if (!str) return '';
-            return str.replace(/[&<>]/g, function(m) {
-                if (m === '&') return '&amp;';
-                if (m === '<') return '&lt;';
-                if (m === '>') return '&gt;';
-                return m;
-            }).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(c) {
-                return c;
-            });
         }
 
         // 调用 Netlify Function
@@ -1283,7 +1269,6 @@
             modelSelector.addEventListener('change', () => switchModel(modelSelector.value));
             searchBox.addEventListener('input', debounce(e => performFaultSearch(e.target.value), 300));
             materialSearchBox.addEventListener('input', debounce(e => performMaterialSearch(e.target.value), 300));
-            // Tab切换
             document.querySelectorAll('.tab-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const tab = btn.dataset.tab;
@@ -1300,21 +1285,32 @@
                     }
                 });
             });
-            // 反馈相关
-            document.getElementById('feedbackBtn').addEventListener('click', () => {
+            const feedbackBtn = document.getElementById('feedbackBtn');
+            const feedbackModal = document.getElementById('feedbackModal');
+            const closeModal = document.getElementById('closeModal');
+            const cancelFeedback = document.getElementById('cancelFeedback');
+            const feedbackForm = document.getElementById('feedbackFormElement');
+            const successMsg = document.getElementById('successMessage');
+            const backToForm = document.getElementById('backToForm');
+            const closeReplyBtn = document.getElementById('closeReply');
+            const adminBtn = document.getElementById('adminBtn');
+            const statsBtn = document.getElementById('statsBtn');
+            const replyAdminBtn = document.getElementById('replyAdminBtn');
+
+            feedbackBtn.addEventListener('click', () => {
                 document.getElementById('feedbackModel').value = modelSelector.value;
-                document.getElementById('feedbackModal').classList.add('active');
+                feedbackModal.classList.add('active');
             });
-            const closeModal = () => {
-                document.getElementById('feedbackModal').classList.remove('active');
-                document.getElementById('feedbackFormElement').reset();
+            const closeFeedbackModal = () => {
+                feedbackModal.classList.remove('active');
+                feedbackForm.reset();
                 document.getElementById('feedbackForm').style.display = 'block';
-                document.getElementById('successMessage').classList.remove('active');
+                successMsg.classList.remove('active');
             };
-            document.getElementById('closeModal').addEventListener('click', closeModal);
-            document.getElementById('cancelFeedback').addEventListener('click', closeModal);
-            document.getElementById('feedbackModal').addEventListener('click', e => { if (e.target === document.getElementById('feedbackModal')) closeModal(); });
-            document.getElementById('feedbackFormElement').addEventListener('submit', async (e) => {
+            closeModal.addEventListener('click', closeFeedbackModal);
+            cancelFeedback.addEventListener('click', closeFeedbackModal);
+            feedbackModal.addEventListener('click', e => { if (e.target === feedbackModal) closeFeedbackModal(); });
+            feedbackForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
                 const model = document.getElementById('feedbackModel').value;
                 const problem = document.getElementById('feedbackProblem').value;
@@ -1323,30 +1319,29 @@
                 try {
                     await submitFeedback(model, problem, suggestion);
                     document.getElementById('feedbackForm').style.display = 'none';
-                    document.getElementById('successMessage').classList.add('active');
+                    successMsg.classList.add('active');
                     recordVisit();
                 } catch(err) {
                     alert('提交失败：' + err.message);
                 }
             });
-            document.getElementById('backToForm').addEventListener('click', () => {
-                document.getElementById('feedbackFormElement').reset();
+            backToForm.addEventListener('click', () => {
+                feedbackForm.reset();
                 document.getElementById('feedbackForm').style.display = 'block';
-                document.getElementById('successMessage').classList.remove('active');
+                successMsg.classList.remove('active');
             });
-            document.getElementById('closeReply').addEventListener('click', async () => {
+            closeReplyBtn.addEventListener('click', async () => {
                 const notif = document.getElementById('replyNotification');
                 const fid = notif.dataset.feedbackId;
                 if (fid) await markReplyRead(fid);
                 notif.style.display = 'none';
             });
-            // 管理员按钮
-            document.getElementById('adminBtn').addEventListener('click', () => {
+            adminBtn.addEventListener('click', () => {
                 if (!isAdmin()) showAdminAuth();
                 else exportFeedbackAsAdmin();
             });
-            document.getElementById('statsBtn').addEventListener('click', exportStats);
-            document.getElementById('replyAdminBtn').addEventListener('click', () => {
+            statsBtn.addEventListener('click', exportStats);
+            replyAdminBtn.addEventListener('click', () => {
                 if (!isAdmin()) showAdminAuth();
                 else replyFeedback();
             });
@@ -1368,7 +1363,6 @@
             await checkUnreadReplies();
             await recordVisit();
             bindEvents();
-            // 如果之前已认证，显示管理员按钮
             if (isAdmin()) {
                 document.getElementById('adminBtn').style.display = 'block';
                 document.getElementById('statsBtn').style.display = 'block';
